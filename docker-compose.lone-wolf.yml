@@ -1,0 +1,10 @@
+version: '2'
+services:
+    app:
+        build: .
+        volumes:
+            - .:/app/image/bin
+        environment:
+            #- DEBUG=1
+            - NULL=0
+
