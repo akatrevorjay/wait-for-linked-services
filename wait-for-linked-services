@@ -17,7 +17,7 @@ set -eo pipefail
 
 SELF="$(basename "$0")"
 
-function _script_echo   { echo "[$(date)] $0[$$]" "${@:2}" "#$1"; }
+function _script_echo   { echo "[$(date)] $0[$$]" "${@:2}" "#$1" >&2; }
 function debug          { [[ -z "$DEBUG" ]] || _script_echo DEBUG "$@"; }
 function e              { [[ -n "$QUIET" ]] || _script_echo INFO "$@"; }
 function info           { e "$@"; }
@@ -31,16 +31,16 @@ function split_url_proto {
     echo "${1%%://*}" "${1#*://}"
 }
 
-function get_service_urls {
-    local name="${1^^}" var=''
-    # This ugly thing looks for $name_$NUM_PORT_$PORT_$PROTO variables
-    for var in $(compgen -A variable | egrep "^${name}_PORT_[0-9]+_[A-Z]+$"); do
-        echo "${!var}"
-    done
-}
+function get_primary_service_urls {
+    [[ $# -gt 0 ]] || set -- '^[A-Z0-9]+_[0-9]+'
+    debug "Getting primary service urls for \"$1\""
 
-function get_all_services_urls {
-    get_service_urls "[A-Z0-9]+_[0-9]+"
+    local var='' service='' ret=1
+    for var in $(compgen -A variable | egrep "^${1}_PORT\$"); do
+        echo "${!var}"
+        ret=0
+    done
+    return $ret
 }
 
 function is_url_port_open {
@@ -85,6 +85,7 @@ function wait_for_url_port_open {
     while [ $i -lt $timeout_secs ]
     do
         if is_url_port_open "$url"; then
+            e "Service up: \"$url\""
             return 0
         fi
         let i++ || :
@@ -96,18 +97,20 @@ function wait_for_url_port_open {
 }
 
 function parallellize() {
-    local -a pids
+    if [[ $# -eq 0 ]]; then
+        e "No linked services found to check; assuming lone wolf."
+        return 0
+    fi
+
+    e "Waiting for services in parallel (timeout=$TIMEOUT):" "$@"
+
     for url in "$@"; do
         "$0" "$url" &
-        pids+=("$!")
     done
 
-    for pid in "${pids[@]}"; do
-        debug "Waiting on pid $pid"
-        wait "$pid"
-    done
     debug "Waiting for any remaining pids"
     wait
+    debug "Services up:" "$@"
 }
 
 function main {
@@ -117,19 +120,14 @@ function main {
     # If none were specified, check all linked services
     if [[ $# -eq 0 ]]; then
         debug "Getting a list of all linked services"
-        set -- $(get_all_services_urls)
+        set -- $(get_primary_service_urls | sort -u)
     fi
-
-    debug "Waiting for services:" "$@"
 
     # If we have one, run direct. If many, check in parallel.
     case $# in
-        0) debug "No linked services found to check; assuming lone wolf." ;;
-        1) wait_for_url_port_open "$url" ;;
+        1) wait_for_url_port_open "$1" ;;
         *) parallellize "$@" ;;
     esac
-
-    debug "Done"
 }
 
 main "$@"
