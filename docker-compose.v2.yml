@@ -1,0 +1,19 @@
+version: '2'
+services:
+    app:
+        build: .
+        command: bash -c 'env | sort | grep PORT && /app/image/bin/wait-for-linked-services'
+        volumes:
+            - .:/app/image/bin
+        environment:
+            #- DEBUG=1
+            # Services
+            - REDIS_1_PORT=tcp://redis:6379
+            - POSTGRES_1_PORT=tcp://postgres:5432
+
+    redis:
+        image: redis
+
+    postgres:
+        image: postgres
+

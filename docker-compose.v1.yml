@@ -1,0 +1,18 @@
+app:
+    build: .
+    command: bash -c 'env | sort | grep PORT && /app/image/bin/wait-for-linked-services'
+    volumes:
+        - .:/app/image/bin
+    environment:
+        #- DEBUG=1
+        - NULL=0
+    links:
+        - redis
+        - postgres
+
+redis:
+    image: redis
+
+postgres:
+    image: postgres
+
