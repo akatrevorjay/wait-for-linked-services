@@ -128,13 +128,19 @@ function wait_for_check_url {
 
     local nullify="nullify"
 
+    local remind_after=$(( $timeout_secs / 2 ))
+
     local i=0
     while [ $i -lt $timeout_secs ]
     do
         let i++ || :
 
+        if [[ $i -gt $remind_after ]]; then
+            warn "Still waiting($i/$timeout_secs) on url \"$url\""
+        fi
+
         if [[ $i -eq $timeout_secs ]]; then
-            warn "Nearing end of timeout for url \"$url\"; allowing output for debug."
+            warn "Last shot before timeout for url \"$url\"; allowing output for debug."
             nullify=""
         fi
 
