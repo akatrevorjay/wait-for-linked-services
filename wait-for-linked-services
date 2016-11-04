@@ -51,6 +51,9 @@ function get_primary_service_urls {
 function backend_netcat {
     local proto="$1" addr="$2"; shift 2
 
+    # make sure we have `nc`
+    type nc > /dev/null || death "failed to find 'nc'"
+
     local nc="nc -z"
     case "$proto" in
         unix)
@@ -69,6 +72,9 @@ function backend_netcat {
 
 function backend_curl {
     local proto="$1" addr="$2"; shift 2
+
+    # make sure we have `curl`
+    type curl > /dev/null || death "failed to find 'curl'"
 
     local curl="curl -sSLfo /dev/null"
     case "$proto" in
@@ -106,6 +112,9 @@ function check_url {
         socket)
             test -S "$addr" ;;
         ping)
+            # make sure we have `nc`
+            type ping > /dev/null || death "failed to find 'nc'"
+
             ping -c 1 -o -q -t 1 "$addr" >/dev/null ;;
         sleep)
             sleep "$addr" ;;
@@ -174,9 +183,6 @@ function parallellize() {
 }
 
 function main {
-    # make sure we have `nc`
-    type nc > /dev/null || death "failed to find 'nc'"
-
     # If none were specified, check all linked services
     if [[ $# -eq 0 ]]; then
         debug "Getting a list of all linked services"
