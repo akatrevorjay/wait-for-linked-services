@@ -40,7 +40,7 @@ function get_primary_service_urls {
     [[ $# -gt 0 ]] || set -- '^[A-Z0-9]+_[0-9]+'
     debug "Getting primary service urls for \"$1\""
 
-    local var='' service='' ret=1
+    local var='' ret=1
     for var in $(compgen -A variable | egrep "^${1}_PORT\$"); do
         echo "${!var}"
         ret=0
@@ -60,13 +60,14 @@ function backend_netcat {
             $nc -U "$addr" ;;
         udp)
             nc+=" -u" ;;&
-        tcp)
-            local host="${addr%%:*}" port="${url##*:}"
+        udp|tcp)
+            local host="${addr%%:*}" port="${addr##*:}"
             [[ -n "$host" ]] || death "No host found for url \"$url\""
             [[ -n "$port" ]] || death "No port found for url \"$url\""
             $nc "$host" "$port" ;;
         *)
-            $nc "$@" ;;
+            warn "Unknown proto \"$proto\" (addr=\"$addr\") for netcat backend."
+            return 1
     esac
 }
 
@@ -137,9 +138,8 @@ function wait_for_check_url {
     local url="$1" timeout_secs="${2:-$TIMEOUT}"
     debug "Checking url \"$url\" (timeout=${timeout_secs}s)"
 
-    local nullify="nullify"
-
-    local remind_after=$(( $timeout_secs / 2 ))
+    set -- nullify check_url "$url"
+    local remind_every=$(( $timeout_secs / 2 ))
 
     local i=0
     while [ $i -lt $timeout_secs ]
@@ -148,12 +148,12 @@ function wait_for_check_url {
 
         if [[ $i -eq $timeout_secs ]]; then
             warn "Last shot before timeout for url \"$url\"; allowing output for debug."
-            nullify=""
-        elif [[ $i -gt $remind_after ]]; then
+            shift
+        elif [[ $i -gt 1 ]] && ! (( $i % $remind_every )); then
             warn "Still waiting($i/$timeout_secs) on url \"$url\""
         fi
 
-        if $nullify check_url "$url"; then
+        if "$@"; then
             e "Up: \"$url\""
             return 0
         fi
@@ -173,12 +173,24 @@ function parallellize() {
 
     e "Waiting for services in parallel (timeout=$TIMEOUT):" "$@"
 
+    local pids=()
+
+    on_chld() {
+        for pid in "${pids[@]}"; do
+            kill -0 "$pid" 2>/dev/null || wait "$pid"
+        done
+    }
+
+    set -o monitor
+    trap on_chld CHLD
+
     for url in "$@"; do
         "$0" "$url" &
+        pids+=($!)
     done
 
-    debug "Waiting for any remaining pids"
-    wait || death "Failed to wait for services:" "$@"
+    debug "Waiting for pids:" "${pids[@]}"
+    wait
     debug "Services up:" "$@"
 }
 
