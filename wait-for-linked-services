@@ -111,11 +111,13 @@ function check_url {
             test -f "$addr" ;;
         socket)
             test -S "$addr" ;;
+
         ping)
             # make sure we have `nc`
             type ping > /dev/null || death "failed to find 'nc'"
 
             ping -c 1 -o -q -t 1 "$addr" >/dev/null ;;
+
         sleep)
             sleep "$addr" ;;
 
