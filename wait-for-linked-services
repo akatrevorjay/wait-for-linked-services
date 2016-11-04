@@ -26,7 +26,7 @@ function warning        { warn "$@"; }
 function error          { _script_echo ERROR "$@" >&2; }
 function death          { error "$@"; exit 1; }
 function debug_call     { debug 'call:' "$@"; "$@"; }
-function nullify        { "$@" 2>&1 >/dev/null; }
+function nullify        { "$@" >/dev/null 2>&1; }
 
 #
 # Meat
@@ -146,13 +146,11 @@ function wait_for_check_url {
     do
         let i++ || :
 
-        if [[ $i -gt $remind_after ]]; then
-            warn "Still waiting($i/$timeout_secs) on url \"$url\""
-        fi
-
         if [[ $i -eq $timeout_secs ]]; then
             warn "Last shot before timeout for url \"$url\"; allowing output for debug."
             nullify=""
+        elif [[ $i -gt $remind_after ]]; then
+            warn "Still waiting($i/$timeout_secs) on url \"$url\""
         fi
 
         if $nullify check_url "$url"; then
@@ -180,7 +178,7 @@ function parallellize() {
     done
 
     debug "Waiting for any remaining pids"
-    wait
+    wait || death "Failed to wait for services:" "$@"
     debug "Services up:" "$@"
 }
 
