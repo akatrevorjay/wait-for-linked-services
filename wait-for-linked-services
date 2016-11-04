@@ -15,9 +15,9 @@ set -eo pipefail
 # Output
 #
 
-SELF="$(basename "$0")"
+SELF="${0##*/}"
 
-function _script_echo   { echo "[$(date)] $0[$$]" "${@:2}" "#$1" >&2; }
+function _script_echo   { echo "[$(date)] $SELF[$$]" "${@:2}" "#$1" >&2; }
 function debug          { [[ -z "$DEBUG" ]] || _script_echo DEBUG "$@"; }
 function e              { [[ -n "$QUIET" ]] || _script_echo INFO "$@"; }
 function info           { e "$@"; }
@@ -26,6 +26,11 @@ function warning        { warn "$@"; }
 function error          { _script_echo ERROR "$@" >&2; }
 function death          { error "$@"; exit 1; }
 function debug_call     { debug 'call:' "$@"; "$@"; }
+function nullify        { "$@" 2>&1 >/dev/null; }
+
+#
+# Meat
+#
 
 function split_url_proto {
     echo "${1%%://*}" "${1#*://}"
@@ -43,7 +48,40 @@ function get_primary_service_urls {
     return $ret
 }
 
-function is_url_port_open {
+function backend_netcat {
+    local proto="$1" addr="$2"; shift 2
+
+    local nc="nc -z"
+    case "$proto" in
+        unix)
+            $nc -U "$addr" ;;
+        udp)
+            nc+=" -u" ;;&
+        tcp)
+            local host="${addr%%:*}" port="${url##*:}"
+            [[ -n "$host" ]] || death "No host found for url \"$url\""
+            [[ -n "$port" ]] || death "No port found for url \"$url\""
+            $nc "$host" "$port" ;;
+        *)
+            $nc "$@" ;;
+    esac
+}
+
+function backend_curl {
+    local proto="$1" addr="$2"; shift 2
+
+    local curl="curl -sSLfo /dev/null"
+    case "$proto" in
+        http2)
+            curl+=" --http2"
+            proto="${proto/2}"
+            ;;
+    esac
+
+    $curl "${proto}://${addr}"
+}
+
+function check_url {
     local url="$1"
     debug "Checking if $url is open"
 
@@ -60,35 +98,51 @@ function is_url_port_open {
         return 127
     fi
 
-    local nc="nc -z"
     case "$proto" in
-        unix)
-            $nc -U "$addr" ;;
-        udp)
-            nc+=" -u" ;;&
-        tcp)
-            local host="${addr%%:*}" port="${url##*:}"
-            [[ -n "$host" ]] || death "No host found for url \"$url\""
-            [[ -n "$port" ]] || death "No port found for url \"$url\""
-            $nc "$host" "$port" ;;
+        exists)
+            test -e "$addr" ;;
+        file)
+            test -f "$addr" ;;
+        socket)
+            test -S "$addr" ;;
+        ping)
+            ping -c 1 -o -q -t 1 "$addr" >/dev/null ;;
+        sleep)
+            sleep "$addr" ;;
+
+        unix|udp|tcp)
+            backend_netcat "$proto" "$addr" "$@" ;;
+
+        http2|http|https|ftp|sftp|dict|imap|pop3|smtp|socks4|socks4a|socks5|socks5h)
+            backend_curl "$proto" "$addr" "$@" ;;
+
         *)
             warn "Unknown proto \"$proto\" for url \"$url\""
             return 127 ;;
     esac
 }
 
-function wait_for_url_port_open {
+function wait_for_check_url {
     local url="$1" timeout_secs="${2:-$TIMEOUT}"
     debug "Checking url \"$url\" (timeout=${timeout_secs}s)"
+
+    local nullify="nullify"
 
     local i=0
     while [ $i -lt $timeout_secs ]
     do
-        if is_url_port_open "$url"; then
-            e "Service up: \"$url\""
+        let i++ || :
+
+        if [[ $i -eq $timeout_secs ]]; then
+            warn "Nearing end of timeout for url \"$url\"; allowing output for debug."
+            nullify=""
+        fi
+
+        if $nullify check_url "$url"; then
+            e "Up: \"$url\""
             return 0
         fi
-        let i++ || :
+
         sleep 1
     done
 
@@ -125,7 +179,7 @@ function main {
 
     # If we have one, run direct. If many, check in parallel.
     case $# in
-        1) wait_for_url_port_open "$1" ;;
+        1) wait_for_check_url "$1" ;;
         *) parallellize "$@" ;;
     esac
 }
