@@ -77,7 +77,7 @@ function backend_curl {
     # make sure we have `curl`
     type curl > /dev/null || death "failed to find 'curl'"
 
-    local curl="curl -sSLfo /dev/null"
+    local curl="curl -sSLf"
     case "$proto" in
         http2)
             curl+=" --http2"
