@@ -3,7 +3,7 @@
 # Given standard docker line variables, parses and waits for them to respond to SYNs in parallel with timeout.
 # Works with tcp, udp, and unix sockets.
 #
-# @deps bash>=4 netcat
+# @deps bash>=4 netcat curl ping
 # @url https://github.com/akatrevorjay/wait-for-linked-services
 # @author trevorj
 #
